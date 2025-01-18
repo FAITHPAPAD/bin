@@ -2,63 +2,21 @@ import logging
 import rstr
 import requests
 import datetime
-from threading import Thread
-import telebot
 from concurrent.futures import ThreadPoolExecutor
-import json
-import time
+from threading import Thread
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
 # Initialize variables
 generated_Bins = []
 admin_id = "6830887977"  # Replace with your admin user ID
 bot_token = "7748076089:AAGuiDwnRgDNvlcwQcegfaeyg-m0jQT6KzQ"  # Replace with your bot token
-subscription_file = "subscriptions.json"  # File to store subscriptions
 
 # Logging for telegram bot
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 x = datetime.datetime.now()
-
-# Initialize bot
-bot = telebot.TeleBot(bot_token)
-
-# Load subscriptions from file
-def load_subscriptions():
-    try:
-        with open(subscription_file, 'r') as file:
-            return json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-# Save subscriptions to file
-def save_subscriptions(subscriptions):
-    with open(subscription_file, 'w') as file:
-        json.dump(subscriptions, file, indent=4)
-
-# Check if user is subscribed
-def is_subscribed(user_id):
-    subscriptions = load_subscriptions()
-    if str(user_id) in subscriptions:
-        subscription = subscriptions[str(user_id)]
-        # Check if the subscription is still valid (e.g., check expiry time)
-        if time.time() < subscription['expiry']:
-            return True
-    return False
-
-# Add subscription for a user
-def add_subscription(user_id, duration=86400):  # Duration in seconds (86400 = 1 day)
-    subscriptions = load_subscriptions()
-    expiry_time = time.time() + duration  # Set expiry time
-    subscriptions[str(user_id)] = {"expiry": expiry_time}
-    save_subscriptions(subscriptions)
-
-# Remove subscription for a user
-def remove_subscription(user_id):
-    subscriptions = load_subscriptions()
-    if str(user_id) in subscriptions:
-        del subscriptions[str(user_id)]
-        save_subscriptions(subscriptions)
 
 class gen_Bin:
     def Mastercard(self):
@@ -113,49 +71,53 @@ def genetator(no, type):
         Thread(target=run1).start()
 
 # Command handlers for the Telegram bot
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    user_id = message.from_user.id
-    if is_subscribed(user_id):  # Check if the user is subscribed
-        bot.reply_to(message, "Welcome! You are subscribed and can use the bin generator.")
+def start(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id == int(admin_id):  # Check if the user is the admin
+        update.message.reply_text("Welcome Admin! You can control the bin generator here.")
     else:
-        bot.reply_to(message, "Welcome! You are not subscribed. Type /subscribe to start your subscription.")
+        update.message.reply_text("Welcome User! Only Admin can generate bins.")
 
-@bot.message_handler(commands=['subscribe'])
-def subscribe(message):
-    user_id = message.from_user.id
-    if is_subscribed(user_id):
-        bot.reply_to(message, "You are already subscribed!")
-    else:
-        # Add subscription for 1 day (86400 seconds)
-        add_subscription(user_id, duration=86400)
-        bot.reply_to(message, "You have been subscribed for 1 day! You can now use the bin generator.")
-
-@bot.message_handler(commands=['generate'])
-def generate_bins(message):
-    user_id = message.from_user.id
-    if is_subscribed(user_id):  # Only allow subscribed users to generate bins
+def generate_bins(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id == int(admin_id):  # Only allow admin to generate bins
         try:
-            args = message.text.split()
-            no_of_bins = int(args[1])  # Get number of bins from command arguments
-            bin_type = args[2].capitalize()  # Get card type (Mastercard, Visa, etc.)
+            no_of_bins = int(context.args[0])  # Get number of bins from command arguments
+            bin_type = context.args[1].capitalize()  # Get card type (Mastercard, Visa, etc.)
             
             if bin_type not in ["Mastercard", "Visa", "Amex", "Discover"]:
-                bot.reply_to(message, "Invalid card type! Use Mastercard, Visa, Amex, or Discover.")
+                update.message.reply_text("Invalid card type! Use Mastercard, Visa, Amex, or Discover.")
                 return
 
             generated_Bins.clear()
             genetator(no_of_bins, bin_type)
-            bot.reply_to(message, f"Generating {no_of_bins} {bin_type} bins...")
+            update.message.reply_text(f"Generating {no_of_bins} {bin_type} bins...")
 
         except (IndexError, ValueError):
-            bot.reply_to(message, "Usage: /generate <number_of_bins> <card_type> (e.g., /generate 10 Mastercard)")
-    else:
-        bot.reply_to(message, "You are not subscribed! Type /subscribe to get access.")
+            update.message.reply_text("Usage: /generate <number_of_bins> <card_type> (e.g., /generate 10 Mastercard)")
 
-@bot.message_handler(commands=['save'])
-def save_bins(message):
-    user_id = message.from_user.id
-    if is_subscribed(user_id):  # Only allow subscribed users to save bins
-        file_path = f"Results\
+def save_bins(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id == int(admin_id):
+        file_path = f"Results/bins_{x.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+        with open(file_path, 'w') as file:
+            for bin_code in generated_Bins:
+                file.write(f"{bin_code}\n")
+        update.message.reply_text(f"Bins saved to {file_path}")
+    
+def main():
+    # Create Updater and Dispatcher for Telegram bot
+    updater = Updater(bot_token, use_context=True)
+    dispatcher = updater.dispatcher
+
+    # Add command handlers
+    dispatcher.add_handler(CommandHandler('start', start))
+    dispatcher.add_handler(CommandHandler('generate', generate_bins))
+    dispatcher.add_handler(CommandHandler('save', save_bins))
+
+    # Start the bot
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
