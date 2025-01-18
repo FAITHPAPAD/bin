@@ -45,29 +45,27 @@ def check_Bin(Bin):
     return "Invalid Bin"
 
 def run1():
+    results = ""
     for Bin in generated_Bins:
-        print(check_Bin(Bin))
+        results += check_Bin(Bin) + "\n\n"  # Add each bin result to the final message
+    return results
 
 def genetator(no, type):
     if type == "Mastercard":
         for i in range(no):
             gen_Bin().Mastercard()
-        run1()
-
+    
     elif type == "Visa":
         for i in range(no):
             gen_Bin().Visa()
-        run1()
-
+    
     elif type == "Amex":
         for i in range(no):
             gen_Bin().Amex()
-        run1()
-
+    
     elif type == "Discover":
         for i in range(no):
             gen_Bin().Discover()
-        run1()
 
 # Command handlers for the Telegram bot
 @bot.message_handler(commands=['start'])
@@ -93,7 +91,7 @@ def generate_bins(message):
 
             generated_Bins.clear()
             genetator(no_of_bins, bin_type)
-            bot.reply_to(message, f"Generating {no_of_bins} {bin_type} bins...")
+            bot.reply_to(message, f"Generating {no_of_bins} {bin_type} bins...\n\n{run1()}")  # Send generated bin details in reply
 
         except (IndexError, ValueError):
             bot.reply_to(message, "Usage: /generate <number_of_bins> <card_type> (e.g., /generate 10 Mastercard)")
