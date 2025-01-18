@@ -2,17 +2,17 @@ import logging
 import rstr
 import requests
 import datetime
-from concurrent.futures import ThreadPoolExecutor
-from threading import Thread
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+import telebot
 
 # Initialize variables
 generated_Bins = []
 admin_id = "6830887977"  # Replace with your admin user ID
 bot_token = "7748076089:AAGuiDwnRgDNvlcwQcegfaeyg-m0jQT6KzQ"  # Replace with your bot token
 
-# Logging for telegram bot
+# Initialize bot
+bot = telebot.TeleBot(bot_token)
+
+# Logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -45,79 +45,68 @@ def check_Bin(Bin):
     return "Invalid Bin"
 
 def run1():
-    with ThreadPoolExecutor(max_workers=50) as executor:
-        futures = [executor.submit(check_Bin, Bin) for Bin in generated_Bins]
-        executor.shutdown(wait=True)
+    for Bin in generated_Bins:
+        print(check_Bin(Bin))
 
 def genetator(no, type):
     if type == "Mastercard":
         for i in range(no):
             gen_Bin().Mastercard()
-        Thread(target=run1).start()
+        run1()
 
     elif type == "Visa":
         for i in range(no):
             gen_Bin().Visa()
-        Thread(target=run1).start()
+        run1()
 
     elif type == "Amex":
         for i in range(no):
             gen_Bin().Amex()
-        Thread(target=run1).start()
+        run1()
 
     elif type == "Discover":
         for i in range(no):
             gen_Bin().Discover()
-        Thread(target=run1).start()
+        run1()
 
 # Command handlers for the Telegram bot
-def start(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
+@bot.message_handler(commands=['start'])
+def start(message):
+    user_id = message.from_user.id
     if user_id == int(admin_id):  # Check if the user is the admin
-        update.message.reply_text("Welcome Admin! You can control the bin generator here.")
+        bot.reply_to(message, "Welcome Admin! You can control the bin generator here.")
     else:
-        update.message.reply_text("Welcome User! Only Admin can generate bins.")
+        bot.reply_to(message, "Welcome User! Only Admin can generate bins.")
 
-def generate_bins(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
+@bot.message_handler(commands=['generate'])
+def generate_bins(message):
+    user_id = message.from_user.id
     if user_id == int(admin_id):  # Only allow admin to generate bins
         try:
-            no_of_bins = int(context.args[0])  # Get number of bins from command arguments
-            bin_type = context.args[1].capitalize()  # Get card type (Mastercard, Visa, etc.)
-            
+            args = message.text.split()[1:]
+            no_of_bins = int(args[0])  # Get number of bins from command arguments
+            bin_type = args[1].capitalize()  # Get card type (Mastercard, Visa, etc.)
+
             if bin_type not in ["Mastercard", "Visa", "Amex", "Discover"]:
-                update.message.reply_text("Invalid card type! Use Mastercard, Visa, Amex, or Discover.")
+                bot.reply_to(message, "Invalid card type! Use Mastercard, Visa, Amex, or Discover.")
                 return
 
             generated_Bins.clear()
             genetator(no_of_bins, bin_type)
-            update.message.reply_text(f"Generating {no_of_bins} {bin_type} bins...")
+            bot.reply_to(message, f"Generating {no_of_bins} {bin_type} bins...")
 
         except (IndexError, ValueError):
-            update.message.reply_text("Usage: /generate <number_of_bins> <card_type> (e.g., /generate 10 Mastercard)")
+            bot.reply_to(message, "Usage: /generate <number_of_bins> <card_type> (e.g., /generate 10 Mastercard)")
 
-def save_bins(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
+@bot.message_handler(commands=['save'])
+def save_bins(message):
+    user_id = message.from_user.id
     if user_id == int(admin_id):
         file_path = f"Results/bins_{x.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
         with open(file_path, 'w') as file:
             for bin_code in generated_Bins:
                 file.write(f"{bin_code}\n")
-        update.message.reply_text(f"Bins saved to {file_path}")
-    
-def main():
-    # Create Updater and Dispatcher for Telegram bot
-    updater = Updater(bot_token, use_context=True)
-    dispatcher = updater.dispatcher
+        bot.reply_to(message, f"Bins saved to {file_path}")
 
-    # Add command handlers
-    dispatcher.add_handler(CommandHandler('start', start))
-    dispatcher.add_handler(CommandHandler('generate', generate_bins))
-    dispatcher.add_handler(CommandHandler('save', save_bins))
-
-    # Start the bot
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == '__main__':
-    main()
+# Start polling to handle messages
+bot.polling(none_stop=True)
